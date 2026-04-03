@@ -14,4 +14,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && if [ \"$RUN_SEED_ON_STARTUP\" = \"true\" ]; then python -m app.seed; fi && uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "alembic upgrade head && if [ \"$RUN_SEED_ON_STARTUP\" = \"true\" ]; then python -m app.seed; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

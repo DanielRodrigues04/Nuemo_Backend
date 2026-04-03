@@ -60,7 +60,27 @@ APP_NAME=MedWork Clinic API
 APP_ENV=development
 DATABASE_URL=postgresql+psycopg://medwork:medwork@localhost:5432/medwork
 CORS_ORIGINS=http://localhost:3000
+RUN_SEED_ON_STARTUP=false
+PORT=8000
 ```
+
+### Deploy no Railway
+
+Para subir via Docker no Railway:
+
+```env
+APP_ENV=production
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+CORS_ORIGINS=https://seu-front.vercel.app
+RUN_SEED_ON_STARTUP=false
+PORT=8000
+```
+
+Observacoes:
+
+- O backend aceita `DATABASE_URL`, `DATABASE_PRIVATE_URL`, `DATABASE_PUBLIC_URL` ou variaveis `PG*`.
+- URLs `postgres://` e `postgresql://` sao convertidas automaticamente para `postgresql+psycopg://`.
+- Em producao, a aplicacao falha cedo se a conexao ainda apontar para `localhost`.
 
 ## Regras de negocio
 

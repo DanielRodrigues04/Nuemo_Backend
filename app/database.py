@@ -12,6 +12,9 @@ class Base(DeclarativeBase):
     pass
 
 
+if settings.database_url is None:
+    raise RuntimeError("DATABASE_URL nao configurada.")
+
 engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 

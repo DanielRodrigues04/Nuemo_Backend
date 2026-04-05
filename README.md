@@ -1,19 +1,19 @@
 # MedWork Clinic API
 
-API REST para gestao de clinica de medicina do trabalho, com cadastros, lancamentos de atendimentos, controle financeiro e relatorios operacionais.
+API REST da plataforma financeira e operacional da clinica de medicina do trabalho.
 
-## Base URL
+## Objetivo
 
-Local:
+O backend centraliza:
 
-```text
-http://localhost:8000
-```
-
-Documentacao automatica:
-
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- autenticacao por usuario e senha com cadastro em banco
+- cadastro de empresas
+- cadastro de exames
+- lancamento de atendimentos
+- controle de faturamento, pendencias e baixas
+- fechamento mensal por competencia de cobranca
+- detalhamento por empresa
+- geracao de extrato em PDF
 
 ## Stack
 
@@ -23,15 +23,266 @@ Documentacao automatica:
 - Alembic
 - Pydantic
 
-## Como rodar
+## Estrutura do projeto
 
-1. Instale as dependencias:
+```text
+app/
+  core/
+    config.py
+    security.py
+  models/
+    attendance.py
+    company.py
+    exam.py
+    user.py
+  routes/
+    auth.py
+    attendances.py
+    companies.py
+    exams.py
+    reports.py
+  schemas/
+    attendance.py
+    auth.py
+    company.py
+    exam.py
+    report.py
+  services/
+    attendance_service.py
+    company_service.py
+    exam_service.py
+    pdf_service.py
+    report_service.py
+    serializers.py
+    user_service.py
+  database.py
+  main.py
+alembic/
+  env.py
+  versions/
+    0001_create_initial_tables.py
+    0002_add_financial_identity_fields.py
+    0003_add_attendance_billing_competence.py
+    0004_create_users_table.py
+```
+
+## Modelo de dados
+
+### `empresas`
+
+- `id`
+- `nome`
+- `tipo`
+- `documento`
+- `contato`
+
+### `exames`
+
+- `id`
+- `nome`
+- `valor`
+
+### `atendimentos`
+
+- `id`
+- `data`
+- `competencia_cobranca`
+- `data_pagamento`
+- `nome_paciente`
+- `cpf_paciente`
+- `empresa_id`
+- `exame_id`
+- `valor`
+- `forma_pagamento`
+- `status`
+
+### `usuarios`
+
+- `id`
+- `nome`
+- `username`
+- `password_hash`
+- `created_at`
+
+## Regras de negocio
+
+### Autenticacao
+
+- usuarios sao cadastrados no banco pela rota `POST /auth/register`
+- login usa `username` e `password`
+- senha e armazenada com hash PBKDF2 SHA-256
+- rotas de negocio exigem token bearer
+- `GET /health` e `GET /` permanecem publicas
+
+### Atendimentos
+
+- `valor` do atendimento usa o valor do exame quando o payload nao envia valor
+- `forma_pagamento = faturado` gera `status = pendente`
+- `forma_pagamento = dinheiro` ou `pix` gera `status = pago`
+- `data_pagamento` e gravada quando o atendimento nasce pago ou quando uma baixa e executada depois
+
+### Competencia de cobranca
+
+- atendimentos pagos no ato entram na competencia do proprio mes do atendimento
+- atendimentos `faturado` entram na competencia do mes seguinte
+- o fechamento mensal usa `competencia_cobranca`, nao apenas a data do atendimento
+- isso permite que exames realizados em um mes componham a cobranca do mes seguinte quando forem faturados
+
+### Fechamento mensal
+
+- `GET /reports/month/{month}` retorna total faturado, total recebido, total pendente e ranking de empresas devedoras da competencia informada
+- `GET /reports/company/{company_id}` detalha exames, valores e atendimentos por empresa
+- o detalhamento aceita `month` ou `data_inicio` + `data_fim`
+- `POST /reports/company/{company_id}/settle` baixa todos os atendimentos pendentes da empresa no periodo informado
+- a baixa em lote atualiza `status`, `forma_pagamento` e `data_pagamento`
+
+### Exclusoes e integridade
+
+- empresas e exames com atendimentos vinculados nao podem ser removidos
+- nomes de empresa e exame devem ser unicos
+- login de usuario deve ser unico
+
+## Fluxo de autenticacao
+
+### Cadastro
+
+`POST /auth/register`
+
+Payload:
+
+```json
+{
+  "nome": "Nome do usuario",
+  "username": "login",
+  "password": "senha-segura"
+}
+```
+
+Resposta:
+
+```json
+{
+  "access_token": "<token>",
+  "token_type": "bearer",
+  "expires_in_seconds": 43200,
+  "user": {
+    "id": 1,
+    "nome": "Nome do usuario",
+    "username": "login",
+    "created_at": "2026-04-05T12:00:00Z"
+  }
+}
+```
+
+### Login
+
+`POST /auth/login`
+
+Payload:
+
+```json
+{
+  "username": "login",
+  "password": "senha-segura"
+}
+```
+
+### Sessao atual
+
+`GET /auth/me`
+
+Header:
+
+```text
+Authorization: Bearer <token>
+```
+
+## Rotas principais
+
+### Publicas
+
+- `GET /`
+- `GET /health`
+- `POST /auth/register`
+- `POST /auth/login`
+
+### Protegidas
+
+- `GET /auth/me`
+- `GET/POST/PUT/DELETE /companies`
+- `GET/POST/PUT/DELETE /exams`
+- `GET/POST/PUT/PATCH/DELETE /attendances`
+- `GET /reports/dashboard`
+- `GET /reports/months`
+- `GET /reports/month/{month}`
+- `GET /reports/company/{company_id}`
+- `POST /reports/company/{company_id}/settle`
+- `GET /reports/company/{company_id}/pdf`
+
+## Filtros e contratos importantes
+
+### `GET /attendances`
+
+Query params:
+
+- `empresa_id`
+- `status`
+- `data_inicio`
+- `data_fim`
+
+Esse endpoint filtra pela data real do atendimento.
+
+### `GET /reports/company/{company_id}`
+
+Aceita um destes recortes:
+
+- `month=YYYY-MM`
+- `data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD`
+
+Esse endpoint filtra pela competencia de cobranca.
+
+### `POST /reports/company/{company_id}/settle`
+
+Payload:
+
+```json
+{
+  "month": "2026-04",
+  "forma_pagamento": "pix"
+}
+```
+
+Ou:
+
+```json
+{
+  "data_inicio": "2026-04-01",
+  "data_fim": "2026-04-30",
+  "forma_pagamento": "pix"
+}
+```
+
+## Variaveis de ambiente
+
+```env
+APP_NAME=MedWork Clinic API
+APP_ENV=development
+DATABASE_URL=postgresql+psycopg://medwork:medwork@localhost:5432/medwork
+CORS_ORIGINS=http://localhost:3000
+CLINIC_NAME=Nuemo
+AUTH_SECRET_KEY=defina-um-segredo-longo-e-seguro
+PORT=8000
+```
+
+## Executar localmente
+
+1. Instale dependencias:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-2. Crie o `.env` com base no `.env.example`.
+2. Configure o `.env`.
 
 3. Rode as migrations:
 
@@ -39,74 +290,34 @@ python -m pip install -r requirements.txt
 python -m alembic upgrade head
 ```
 
-4. Popule dados iniciais opcionais:
-
-```bash
-python -m app.seed
-```
-
-5. Suba a API:
+4. Suba a API:
 
 ```bash
 python -m uvicorn app.main:app --reload
 ```
 
-## Variaveis de ambiente
+## Executar com Docker
 
-Exemplo de `.env`:
+O container:
 
-```env
-APP_NAME=MedWork Clinic API
-APP_ENV=development
-DATABASE_URL=postgresql+psycopg://medwork:medwork@localhost:5432/medwork
-CORS_ORIGINS=http://localhost:3000
-RUN_SEED_ON_STARTUP=false
-PORT=8000
-```
+- aplica migrations na inicializacao
+- sobe o Uvicorn usando a porta definida em `PORT`
+- nao injeta dados ficticios automaticamente
 
-### Deploy no Railway
+## Deploy no Railway
 
-Para subir via Docker no Railway:
+Variaveis minimas:
 
 ```env
 APP_ENV=production
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 CORS_ORIGINS=https://seu-front.vercel.app
-RUN_SEED_ON_STARTUP=false
+CLINIC_NAME=Nuemo
+AUTH_SECRET_KEY=defina-um-segredo-longo-e-seguro
 PORT=8000
 ```
 
-Observacoes:
-
-- O backend aceita `DATABASE_URL`, `DATABASE_PRIVATE_URL`, `DATABASE_PUBLIC_URL` ou variaveis `PG*`.
-- URLs `postgres://` e `postgresql://` sao convertidas automaticamente para `postgresql+psycopg://`.
-- Em producao, a aplicacao falha cedo se a conexao ainda apontar para `localhost`.
-
-## Regras de negocio
-
-- O status do atendimento e calculado automaticamente pela forma de pagamento.
-- `forma_pagamento = faturado` gera `status = pendente`.
-- `forma_pagamento = dinheiro` ou `pix` gera `status = pago`.
-- Ao marcar um atendimento como pago em `PATCH /attendances/{id}/pay`, a API sempre grava `status = pago`.
-- Se o payload de pagamento vier com `forma_pagamento = faturado`, a API ajusta automaticamente para `pix`.
-- Ao criar ou atualizar um atendimento sem `valor`, a API usa o valor padrao do exame selecionado.
-- Empresas e exames nao podem ser duplicados pelo nome.
-- Empresas e exames com atendimentos vinculados nao podem ser excluidos.
-
 ## Healthcheck
-
-### `GET /`
-
-Retorna metadados basicos da API.
-
-Resposta:
-
-```json
-{
-  "message": "MedWork Clinic API",
-  "docs": "/docs"
-}
-```
 
 ### `GET /health`
 
@@ -118,440 +329,26 @@ Resposta:
 }
 ```
 
-## Empresas
+## Integracao com o frontend
 
-### `GET /companies`
+- o frontend Next.js usa `/api` localmente e em producao
+- a rota `frontend/app/api/[...path]/route.ts` faz o proxy para o backend
+- o cookie de sessao `nuemo_session` e convertido em `Authorization: Bearer <token>` antes de chamar a API
 
-Lista todas as empresas.
+## Estado atual do software
 
-Resposta `200 OK`:
+Ja implementado no backend:
 
-```json
-[
-  {
-    "id": 1,
-    "nome": "Metalurgica Horizonte",
-    "tipo": "empresa"
-  }
-]
-```
+- autenticacao com cadastro e login
+- faturamento por competencia
+- data de pagamento
+- relatorios mensais
+- drill-down por empresa
+- baixa em lote
+- extrato PDF
 
-### `GET /companies/{company_id}`
+Fora do escopo do codigo e ainda dependente de infraestrutura:
 
-Busca uma empresa por id.
-
-Resposta `200 OK`:
-
-```json
-{
-  "id": 1,
-  "nome": "Metalurgica Horizonte",
-  "tipo": "empresa"
-}
-```
-
-### `POST /companies`
-
-Cria uma empresa.
-
-Payload:
-
-```json
-{
-  "nome": "Metalurgica Horizonte",
-  "tipo": "empresa"
-}
-```
-
-Resposta `201 Created`:
-
-```json
-{
-  "id": 1,
-  "nome": "Metalurgica Horizonte",
-  "tipo": "empresa"
-}
-```
-
-### `PUT /companies/{company_id}`
-
-Atualiza uma empresa.
-
-Payload:
-
-```json
-{
-  "nome": "Metalurgica Horizonte LTDA",
-  "tipo": "empresa"
-}
-```
-
-Resposta `200 OK`:
-
-```json
-{
-  "id": 1,
-  "nome": "Metalurgica Horizonte LTDA",
-  "tipo": "empresa"
-}
-```
-
-### `DELETE /companies/{company_id}`
-
-Exclui uma empresa.
-
-Resposta `204 No Content`
-
-Erros comuns:
-
-- `404`: empresa nao encontrada
-- `409`: ja existe empresa com mesmo nome ou ha atendimentos vinculados
-
-## Exames
-
-### `GET /exams`
-
-Lista todos os exames.
-
-Resposta `200 OK`:
-
-```json
-[
-  {
-    "id": 1,
-    "nome": "Audiometria",
-    "valor": 45.0
-  }
-]
-```
-
-### `GET /exams/{exam_id}`
-
-Busca um exame por id.
-
-### `POST /exams`
-
-Cria um exame.
-
-Payload:
-
-```json
-{
-  "nome": "Audiometria",
-  "valor": 45.0
-}
-```
-
-Resposta `201 Created`:
-
-```json
-{
-  "id": 1,
-  "nome": "Audiometria",
-  "valor": 45.0
-}
-```
-
-### `PUT /exams/{exam_id}`
-
-Atualiza um exame.
-
-Payload:
-
-```json
-{
-  "nome": "Audiometria Ocupacional",
-  "valor": 55.0
-}
-```
-
-### `DELETE /exams/{exam_id}`
-
-Exclui um exame.
-
-Resposta `204 No Content`
-
-Erros comuns:
-
-- `404`: exame nao encontrado
-- `409`: ja existe exame com mesmo nome ou ha atendimentos vinculados
-
-## Atendimentos
-
-### `GET /attendances`
-
-Lista atendimentos, com filtros opcionais.
-
-Query params:
-
-- `empresa_id`: inteiro
-- `status`: `pago` ou `pendente`
-- `data_inicio`: `YYYY-MM-DD`
-- `data_fim`: `YYYY-MM-DD`
-
-Exemplo:
-
-```text
-GET /attendances?empresa_id=1&status=pendente&data_inicio=2026-03-01&data_fim=2026-03-31
-```
-
-Resposta `200 OK`:
-
-```json
-[
-  {
-    "id": 1,
-    "data": "2026-03-31T13:20:00Z",
-    "nome_paciente": "Carlos Silva",
-    "empresa_id": 1,
-    "empresa_nome": "Metalurgica Horizonte",
-    "exame_id": 2,
-    "exame_nome": "Audiometria",
-    "valor": 45.0,
-    "forma_pagamento": "faturado",
-    "status": "pendente"
-  }
-]
-```
-
-### `GET /attendances/{attendance_id}`
-
-Busca um atendimento por id.
-
-### `POST /attendances`
-
-Cria um atendimento.
-
-Payload:
-
-```json
-{
-  "nome_paciente": "Carlos Silva",
-  "empresa_id": 1,
-  "exame_id": 2,
-  "valor": 45.0,
-  "forma_pagamento": "faturado"
-}
-```
-
-Resposta `201 Created`:
-
-```json
-{
-  "id": 1,
-  "data": "2026-03-31T13:20:00Z",
-  "nome_paciente": "Carlos Silva",
-  "empresa_id": 1,
-  "empresa_nome": "Metalurgica Horizonte",
-  "exame_id": 2,
-  "exame_nome": "Audiometria",
-  "valor": 45.0,
-  "forma_pagamento": "faturado",
-  "status": "pendente"
-}
-```
-
-### `PUT /attendances/{attendance_id}`
-
-Atualiza um atendimento.
-
-Payload:
-
-```json
-{
-  "nome_paciente": "Carlos Silva",
-  "empresa_id": 1,
-  "exame_id": 2,
-  "valor": 60.0,
-  "forma_pagamento": "pix"
-}
-```
-
-Resposta `200 OK`:
-
-```json
-{
-  "id": 1,
-  "data": "2026-03-31T13:20:00Z",
-  "nome_paciente": "Carlos Silva",
-  "empresa_id": 1,
-  "empresa_nome": "Metalurgica Horizonte",
-  "exame_id": 2,
-  "exame_nome": "Audiometria",
-  "valor": 60.0,
-  "forma_pagamento": "pix",
-  "status": "pago"
-}
-```
-
-### `PATCH /attendances/{attendance_id}/pay`
-
-Marca um atendimento como pago.
-
-Payload:
-
-```json
-{
-  "forma_pagamento": "pix"
-}
-```
-
-Resposta `200 OK`:
-
-```json
-{
-  "id": 1,
-  "data": "2026-03-31T13:20:00Z",
-  "nome_paciente": "Carlos Silva",
-  "empresa_id": 1,
-  "empresa_nome": "Metalurgica Horizonte",
-  "exame_id": 2,
-  "exame_nome": "Audiometria",
-  "valor": 60.0,
-  "forma_pagamento": "pix",
-  "status": "pago"
-}
-```
-
-### `DELETE /attendances/{attendance_id}`
-
-Exclui um atendimento.
-
-Resposta `204 No Content`
-
-Erros comuns:
-
-- `404`: atendimento nao encontrado
-- `422`: payload invalido
-
-## Relatorios
-
-### `GET /reports/dashboard`
-
-Resumo financeiro do mes atual.
-
-Resposta `200 OK`:
-
-```json
-{
-  "mes_referencia": "2026-03",
-  "total_faturado": 1200.0,
-  "total_recebido": 800.0,
-  "total_pendente": 400.0
-}
-```
-
-### `GET /reports/months`
-
-Lista os meses com movimentacao.
-
-Resposta `200 OK`:
-
-```json
-{
-  "meses": ["2026-03", "2026-02", "2026-01"]
-}
-```
-
-### `GET /reports/month/{month}`
-
-Retorna o fechamento mensal.
-
-Formato do parametro `month`: `YYYY-MM`
-
-Exemplo:
-
-```text
-GET /reports/month/2026-03
-```
-
-Resposta `200 OK`:
-
-```json
-{
-  "mes": "2026-03",
-  "total_faturado": 1200.0,
-  "total_recebido": 800.0,
-  "total_pendente": 400.0,
-  "empresas_devedoras": [
-    {
-      "empresa_id": 1,
-      "empresa_nome": "Metalurgica Horizonte",
-      "total_pendente": 250.0,
-      "quantidade_atendimentos": 3
-    }
-  ]
-}
-```
-
-Erros comuns:
-
-- `400`: mes invalido. Use `YYYY-MM`
-
-### `GET /reports/company/{company_id}`
-
-Detalhamento financeiro e operacional por empresa.
-
-Resposta `200 OK`:
-
-```json
-{
-  "empresa": {
-    "id": 1,
-    "nome": "Metalurgica Horizonte",
-    "tipo": "empresa"
-  },
-  "total_exames": 8,
-  "valor_total": 980.0,
-  "exames_por_tipo": [
-    {
-      "exame_id": 2,
-      "exame_nome": "Audiometria",
-      "quantidade": 4,
-      "valor_total": 220.0
-    }
-  ],
-  "atendimentos": [
-    {
-      "id": 1,
-      "data": "2026-03-31T13:20:00Z",
-      "nome_paciente": "Carlos Silva",
-      "empresa_id": 1,
-      "empresa_nome": "Metalurgica Horizonte",
-      "exame_id": 2,
-      "exame_nome": "Audiometria",
-      "valor": 60.0,
-      "forma_pagamento": "pix",
-      "status": "pago"
-    }
-  ]
-}
-```
-
-## Codigos de status mais comuns
-
-- `200 OK`: leitura ou atualizacao bem-sucedida
-- `201 Created`: recurso criado
-- `204 No Content`: recurso excluido
-- `400 Bad Request`: parametro invalido
-- `404 Not Found`: recurso nao encontrado
-- `409 Conflict`: nome duplicado ou exclusao bloqueada por vinculos
-- `422 Unprocessable Entity`: erro de validacao do payload
-
-## Enumeracoes aceitas
-
-### `tipo`
-
-- `empresa`
-- `pessoa_fisica`
-
-### `forma_pagamento`
-
-- `dinheiro`
-- `pix`
-- `faturado`
-
-### `status`
-
-- `pago`
-- `pendente`
+- backups automatizados
+- politicas de SLA
+- monitoramento e observabilidade de producao

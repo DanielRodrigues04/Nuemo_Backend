@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
+from app.core.security import require_access_token
 from app.database import get_db
 from app.schemas.report import (
     CompanyDetailReport,
@@ -21,7 +22,7 @@ from app.services.report_service import (
     settle_company_period,
 )
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(require_access_token)])
 
 
 @router.get("/dashboard", response_model=DashboardReport)

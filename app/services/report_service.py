@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.enums import FormaPagamento, StatusAtendimento
 from app.schemas.report import (
     CompanyDetailReport,
@@ -23,7 +24,7 @@ from app.services.pdf_service import generate_company_statement_pdf
 from app.services.serializers import decimal_to_float, serialize_attendance, serialize_company
 
 
-def month_key(value: datetime) -> str:
+def month_key(value: date | datetime) -> str:
     return f"{value.year}-{value.month:02d}"
 
 
@@ -38,7 +39,7 @@ def sum_attendance_values(attendances: list) -> float:
 
 def get_reference_month(attendances: list) -> str:
     current_month = month_key(datetime.now(timezone.utc))
-    months = sorted({month_key(item.data) for item in attendances}, reverse=True)
+    months = sorted({month_key(item.competencia_cobranca) for item in attendances}, reverse=True)
 
     if current_month in months:
         return current_month
@@ -115,7 +116,7 @@ def build_company_detail_report(
 def get_dashboard_report(db: Session) -> DashboardReport:
     all_attendances = list_attendance_models(db)
     reference_month = get_reference_month(all_attendances)
-    attendances = [item for item in all_attendances if month_key(item.data) == reference_month]
+    attendances = [item for item in all_attendances if month_key(item.competencia_cobranca) == reference_month]
 
     received = [item for item in attendances if item.status == StatusAtendimento.PAGO]
     pending = [item for item in attendances if item.status == StatusAtendimento.PENDENTE]
@@ -132,7 +133,7 @@ def get_dashboard_report(db: Session) -> DashboardReport:
 
 
 def get_months_report(db: Session) -> MonthListReport:
-    months = sorted({month_key(item.data) for item in list_attendance_models(db)}, reverse=True)
+    months = sorted({month_key(item.competencia_cobranca) for item in list_attendance_models(db)}, reverse=True)
     return MonthListReport(meses=months)
 
 
@@ -145,7 +146,7 @@ def get_month_report(db: Session, month: str) -> MonthlyCloseReport:
             detail="Mes invalido. Use o formato YYYY-MM.",
         ) from exc
 
-    attendances = list_attendance_models(db, month=month)
+    attendances = list_attendance_models(db, month=month, use_billing_competence=True)
     pending_by_company: dict[int, dict[str, float | int | str | None]] = defaultdict(
         lambda: {
             "empresa_id": 0,
@@ -209,6 +210,7 @@ def get_company_report(
         month=month,
         date_start=date_start,
         date_end=date_end,
+        use_billing_competence=True,
     )
 
     return build_company_detail_report(
@@ -235,6 +237,7 @@ def settle_company_period(db: Session, company_id: int, payload: CompanySettleme
         month=payload.month,
         date_start=payload.data_inicio,
         date_end=payload.data_fim,
+        use_billing_competence=True,
     )
 
     if not attendances:
@@ -243,10 +246,12 @@ def settle_company_period(db: Session, company_id: int, payload: CompanySettleme
             detail="Nenhum atendimento pendente foi encontrado para a empresa no periodo informado.",
         )
 
+    payment_date = datetime.now(timezone.utc)
     attendance_ids: list[int] = []
     for attendance in attendances:
         attendance.forma_pagamento = payment_method
         attendance.status = StatusAtendimento.PAGO
+        attendance.data_pagamento = payment_date
         attendance_ids.append(attendance.id)
         db.add(attendance)
 
@@ -287,6 +292,6 @@ def generate_company_report_pdf(
     )
     return generate_company_statement_pdf(
         report,
-        clinic_name="Clinica Dr. Claret Pereira",
+        clinic_name=settings.clinic_name,
         period_label=period_label,
     )

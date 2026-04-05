@@ -26,6 +26,8 @@ def serialize_attendance(attendance: Atendimento) -> AttendanceRead:
     return AttendanceRead(
         id=attendance.id,
         data=attendance.data,
+        competencia_cobranca=attendance.competencia_cobranca,
+        data_pagamento=attendance.data_pagamento,
         nome_paciente=attendance.nome_paciente,
         cpf_paciente=attendance.cpf_paciente,
         empresa_id=attendance.empresa_id,

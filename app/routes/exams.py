@@ -3,13 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_access_token
 from app.database import get_db
 from fastapi import Response
 
 from app.schemas.exam import ExamCreate, ExamRead, ExamUpdate
 from app.services.exam_service import create_exam, delete_exam, get_exam_read, list_exams, update_exam
 
-router = APIRouter(prefix="/exams", tags=["Exams"])
+router = APIRouter(prefix="/exams", tags=["Exams"], dependencies=[Depends(require_access_token)])
 
 
 @router.get("", response_model=list[ExamRead])

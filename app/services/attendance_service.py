@@ -35,6 +35,42 @@ def parse_date_range(value: str, end_of_day: bool = False) -> datetime:
     return datetime.combine(parsed, selected_time, tzinfo=timezone.utc)
 
 
+def ensure_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def month_start(value: date) -> date:
+    return value.replace(day=1)
+
+
+def next_month_start(value: date) -> date:
+    if value.month == 12:
+        return date(value.year + 1, 1, 1)
+    return date(value.year, value.month + 1, 1)
+
+
+def resolve_competencia_cobranca(reference_date: datetime, payment_method: FormaPagamento) -> date:
+    billing_month = month_start(ensure_utc(reference_date).date())
+    if payment_method == FormaPagamento.FATURADO:
+        return next_month_start(billing_month)
+    return billing_month
+
+
+def resolve_payment_date(
+    payment_method: FormaPagamento,
+    current_payment_date: datetime | None = None,
+    *,
+    keep_existing: bool = True,
+) -> datetime | None:
+    if payment_method == FormaPagamento.FATURADO:
+        return None
+    if keep_existing and current_payment_date is not None:
+        return current_payment_date
+    return datetime.now(timezone.utc)
+
+
 def resolve_period_filters(
     *,
     month: str | None = None,
@@ -96,6 +132,7 @@ def list_attendance_models(
     month: str | None = None,
     date_start: str | None = None,
     date_end: str | None = None,
+    use_billing_competence: bool = False,
 ) -> list[Atendimento]:
     resolved_start, resolved_end = resolve_period_filters(month=month, date_start=date_start, date_end=date_end)
     query = build_attendance_query()
@@ -105,9 +142,15 @@ def list_attendance_models(
     if status is not None:
         query = query.where(Atendimento.status == status)
     if resolved_start:
-        query = query.where(Atendimento.data >= parse_date_range(resolved_start))
+        if use_billing_competence:
+            query = query.where(Atendimento.competencia_cobranca >= date.fromisoformat(resolved_start))
+        else:
+            query = query.where(Atendimento.data >= parse_date_range(resolved_start))
     if resolved_end:
-        query = query.where(Atendimento.data <= parse_date_range(resolved_end, end_of_day=True))
+        if use_billing_competence:
+            query = query.where(Atendimento.competencia_cobranca <= date.fromisoformat(resolved_end))
+        else:
+            query = query.where(Atendimento.data <= parse_date_range(resolved_end, end_of_day=True))
 
     query = query.order_by(Atendimento.data.desc(), Atendimento.id.desc())
     return db.scalars(query).unique().all()
@@ -149,8 +192,12 @@ def create_attendance(db: Session, payload: AttendanceCreate) -> AttendanceRead:
     exam = get_exam(db, payload.exame_id)
     payment_method = payload.forma_pagamento
     amount = Decimal(str(payload.valor)) if payload.valor is not None else exam.valor
+    attendance_date = datetime.now(timezone.utc)
 
     attendance = Atendimento(
+        data=attendance_date,
+        competencia_cobranca=resolve_competencia_cobranca(attendance_date, payment_method),
+        data_pagamento=resolve_payment_date(payment_method, keep_existing=False),
         nome_paciente=payload.nome_paciente.strip(),
         cpf_paciente=payload.cpf_paciente,
         empresa_id=company.id,
@@ -181,6 +228,8 @@ def update_attendance(db: Session, attendance_id: int, payload: AttendanceUpdate
     attendance.valor = amount
     attendance.forma_pagamento = payment_method
     attendance.status = resolve_attendance_status(payment_method)
+    attendance.competencia_cobranca = resolve_competencia_cobranca(attendance.data, payment_method)
+    attendance.data_pagamento = resolve_payment_date(payment_method, attendance.data_pagamento)
 
     db.add(attendance)
     db.commit()
@@ -198,6 +247,7 @@ def pay_attendance(db: Session, attendance_id: int, payload: AttendancePay) -> A
 
     attendance.forma_pagamento = payment_method
     attendance.status = StatusAtendimento.PAGO
+    attendance.data_pagamento = datetime.now(timezone.utc)
 
     db.add(attendance)
     db.commit()

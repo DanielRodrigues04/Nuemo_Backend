@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_access_token
 from app.database import get_db
 from app.models.enums import StatusAtendimento
 from app.schemas.attendance import AttendanceCreate, AttendancePay, AttendanceRead, AttendanceUpdate
@@ -15,7 +16,7 @@ from app.services.attendance_service import (
     update_attendance,
 )
 
-router = APIRouter(prefix="/attendances", tags=["Attendances"])
+router = APIRouter(prefix="/attendances", tags=["Attendances"], dependencies=[Depends(require_access_token)])
 
 
 @router.get("", response_model=list[AttendanceRead])

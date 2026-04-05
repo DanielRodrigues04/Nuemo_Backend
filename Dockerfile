@@ -3,7 +3,6 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
-ENV RUN_SEED_ON_STARTUP=false
 
 WORKDIR /app
 
@@ -14,4 +13,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && if [ \"$RUN_SEED_ON_STARTUP\" = \"true\" ]; then python -m app.seed; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

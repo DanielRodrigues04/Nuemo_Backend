@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Numeric, String, func
+from sqlalchemy import Date, DateTime, Enum as SqlEnum, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,8 @@ class Atendimento(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     data: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    competencia_cobranca: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    data_pagamento: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     nome_paciente: Mapped[str] = mapped_column(String(255), nullable=False)
     cpf_paciente: Mapped[str | None] = mapped_column(String(14), nullable=True, index=True)
     empresa_id: Mapped[int] = mapped_column(ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)

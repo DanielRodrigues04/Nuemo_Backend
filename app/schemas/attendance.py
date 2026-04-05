@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -54,6 +54,8 @@ class AttendancePay(BaseModel):
 class AttendanceRead(BaseModel):
     id: int
     data: datetime
+    competencia_cobranca: date
+    data_pagamento: datetime | None = None
     nome_paciente: str
     cpf_paciente: str | None = None
     empresa_id: int

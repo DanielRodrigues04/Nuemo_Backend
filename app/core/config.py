@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str | None = None
     cors_origins: list[str] = ["http://localhost:3000"]
+    clinic_name: str | None = None
+    auth_secret_key: str | None = None
+    auth_token_expiration_hours: int = 12
 
     model_config = SettingsConfigDict(
         env_file=ROOT_DIR / ".env",
@@ -87,6 +90,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 "DATABASE_URL aponta para localhost em producao. No Railway, use a URL do Postgres do proprio projeto."
             )
+
+        self.clinic_name = (self.clinic_name or self.app_name).replace(" API", "").strip() or "Nuemo"
+        self.auth_secret_key = (self.auth_secret_key or "").strip()
+
+        if not self.auth_secret_key:
+            raise ValueError("AUTH_SECRET_KEY deve ser configurada no ambiente.")
+        self.auth_token_expiration_hours = max(1, int(self.auth_token_expiration_hours))
 
         return self
 

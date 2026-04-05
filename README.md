@@ -270,7 +270,6 @@ APP_ENV=development
 DATABASE_URL=postgresql+psycopg://medwork:medwork@localhost:5432/medwork
 CORS_ORIGINS=http://localhost:3000
 CLINIC_NAME=Nuemo
-AUTH_SECRET_KEY=defina-um-segredo-longo-e-seguro
 PORT=8000
 ```
 
@@ -313,7 +312,6 @@ APP_ENV=production
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 CORS_ORIGINS=https://seu-front.vercel.app
 CLINIC_NAME=Nuemo
-AUTH_SECRET_KEY=defina-um-segredo-longo-e-seguro
 PORT=8000
 ```
 
@@ -334,6 +332,7 @@ Resposta:
 - o frontend Next.js usa `/api` localmente e em producao
 - a rota `frontend/app/api/[...path]/route.ts` faz o proxy para o backend
 - o cookie de sessao `nuemo_session` e convertido em `Authorization: Bearer <token>` antes de chamar a API
+- a assinatura dos tokens e derivada automaticamente da `DATABASE_URL`, podendo ser sobrescrita por `AUTH_SECRET_KEY` se voce quiser fixar uma chave propria
 
 ## Estado atual do software
 

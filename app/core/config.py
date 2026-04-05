@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,6 +59,11 @@ def is_local_database_url(value: str) -> bool:
     return "@localhost:" in lowered or "@127.0.0.1:" in lowered or "@[::1]:" in lowered
 
 
+def build_default_auth_secret(database_url: str, app_name: str) -> str:
+    raw = f"{app_name}|{database_url}|nuemo-auth"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class Settings(BaseSettings):
     app_name: str = "MedWork Clinic API"
     app_env: str = "development"
@@ -92,10 +98,10 @@ class Settings(BaseSettings):
             )
 
         self.clinic_name = (self.clinic_name or self.app_name).replace(" API", "").strip() or "Nuemo"
-        self.auth_secret_key = (self.auth_secret_key or "").strip()
-
-        if not self.auth_secret_key:
-            raise ValueError("AUTH_SECRET_KEY deve ser configurada no ambiente.")
+        self.auth_secret_key = (self.auth_secret_key or "").strip() or build_default_auth_secret(
+            self.database_url,
+            self.app_name,
+        )
         self.auth_token_expiration_hours = max(1, int(self.auth_token_expiration_hours))
 
         return self

@@ -1,6 +1,6 @@
 """add attendance billing competence
 
-Revision ID: 0003_attendance_billing_competence
+Revision ID: 0003_billing_competence
 Revises: 0002_financial_fields
 Create Date: 2026-04-05 00:00:00.000000
 """
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0003_attendance_billing_competence"
+revision = "0003_billing_competence"
 down_revision = "0002_financial_fields"
 branch_labels = None
 depends_on = None

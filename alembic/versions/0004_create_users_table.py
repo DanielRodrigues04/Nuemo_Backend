@@ -1,7 +1,7 @@
 """create users table
 
 Revision ID: 0004_create_users_table
-Revises: 0003_attendance_billing_competence
+Revises: 0003_billing_competence
 Create Date: 2026-04-05 00:30:00.000000
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "0004_create_users_table"
-down_revision = "0003_attendance_billing_competence"
+down_revision = "0003_billing_competence"
 branch_labels = None
 depends_on = None
 
